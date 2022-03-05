@@ -92,6 +92,38 @@ void CrossRestricted(FVec3& __restrict A, FVec3& __restrict B, FVec3& __restrict
 // Therefore, references behave like pointers in the context of aliasing.
 
 
+/*
+* Question 2:
+* How could code be changed to allow more optimization possibilities for the
+* compiler without the usage of the restrict keyword?
+*/
+
+// TODO: Should fix it? Possibly slower due to local variables?
+void CrossNonRestricted(FVec3& A, FVec3& B, FVec3& Result)
+{
+	FVec3 a = A;
+	FVec3 b = B;
+	Result.x = a.y * b.z + a.z * b.y;
+	Result.y = a.z * b.x + a.x * b.z;
+	Result.z = a.x * b.y + a.y * b.x;
+}
+
+// TODO: Difference to above? Can the compiler optimize above or this better?
+void CrossNonRestricted(FVec3 A, FVec3 B, FVec3& Result)
+{
+	Result.x = A.y * B.z + A.z * B.y;
+	Result.y = A.z * B.x + A.x * B.z;
+	Result.z = A.x * B.y + A.y * B.x;
+}
+
+/*
+* Question 3:
+* How does aliasing behave in the context of classes and member variables:
+*	- Can member variables alias? If so, which variables are affected and can it be prevented somehow?
+*	- Can member functions alias? Can restrict be used there?
+*/
+
+
 int main()
 {
 	FVec3 a = { 1.0f, 2.0f, 3.0f };
@@ -101,16 +133,3 @@ int main()
 	printf("%f", c.x);
 	return 0;
 }
-
-/*
-* Question 2:
-* How could code be changed to allow more optimization possibilities for the
-* compiler without the usage of the restrict keyword?
-*/
-
-/*
-* Question 3:
-* How does aliasing behave in the context of classes and member variables:
-*	- Can member variables alias? If so, which variables are affected and can it be prevented somehow?
-*	- Can member functions alias? Can restrict be used there?
-*/
