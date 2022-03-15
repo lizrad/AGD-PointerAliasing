@@ -2,7 +2,7 @@
 
 #if __cplusplus
 #if defined(__GNUC__)
-#define XRESTRICT __restrict
+#define XRESTRICT __restrict__
 #elif defined(_MSC_VER) && MSC_VER >= 1400
 #define XRESTRICT __restrict
 #else
@@ -65,7 +65,7 @@ void Cross(FVec3 &A, FVec3 &B, FVec3 &Result)
 20		ret
 */
 
-void CrossRestricted(FVec3 &__restrict A, FVec3 &__restrict B, FVec3 &__restrict Result)
+void CrossRestricted(FVec3 &XRESTRICT A, FVec3 &XRESTRICT B, FVec3 &XRESTRICT Result)
 {
 	Result.x = A.y * B.z + A.z * B.y;
 	Result.y = A.z * B.x + A.x * B.z;
@@ -99,7 +99,7 @@ void CrossRestricted(FVec3 &__restrict A, FVec3 &__restrict B, FVec3 &__restrict
 22		ret
 */
 
-// Therefore, references behave like pointers in the context of aliasing.
+// Therefore, references behave exactly like pointers in the context of aliasing.
 
 /*
  * Question 2:
