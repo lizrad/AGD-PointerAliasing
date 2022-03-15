@@ -135,7 +135,7 @@ void CrossNonRestricted_V3(FVec3 A, FVec3 B, FVec3 &Result)
 	Result.z = A.x * B.y + A.y * B.x;
 }
 
-// TODO: only reads on possible aliasing variable should also fix double reads as they wont ever get dirty anyway? (I think this is what he wanted to see.)
+// TODO: only reads on possible aliasing variables should also fix double reads as they wont ever get dirty anyway? (I think this is what he wanted to see.)
 FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 {
 	FVec3 Result;
@@ -151,6 +151,144 @@ FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
  *	- Can member variables alias? If so, which variables are affected and can it be prevented somehow?
  *	- Can member functions alias? Can restrict be used there?
  */
+
+class NumberStore
+{
+public:
+	NumberStore(int i, int *ip, int &ir, float f, float *fp, float &fr, int *ip2) : i(i), ip(ip), ir(ir), f(f), fp(fp), fr(fr), ip2(ip2) {}
+
+	// TODO: similar testcases could be relvevant for non pointer members, but the extensive test cases with the global functions should cover it
+	//  TODO: Does compiler assume aliasing for i and ip member?
+	int BasicPointerAliasTest(int *i)
+	{
+		*ip = 11;
+		*i = 99;
+		return *ip;
+	}
+	// TODO: Does compiler assume aliasing for n->ip and ip member?
+	int SameObjectAliasTest(NumberStore *n)
+	{
+		*ip = 11;
+		*n->ip = 99;
+		return *ip;
+	}
+	// TODO: Does compiler assume aliasing for ip and ip2 members?
+	int InternalAliasTest()
+	{
+		*ip = 11;
+		*ip2 = 99;
+		return *ip;
+	}
+	int i;
+	int *ip;
+	int &ir;
+	float f;
+	float *fp;
+	float &fr;
+
+	int *ip2;
+};
+
+// TODO: for each testcase, check if aliasing could happen. If so, the compiler must assume that 99 could be a possible return value,
+// if not it can immediately use 11 as a return value.
+
+// TESTCASE: Using a non pointer member, with a pointer of the same type
+int Member_AliasTest_1(NumberStore *n, int *i)
+{
+	n->i = 11;
+	*i = 99;
+	return n->i;
+}
+
+// TESTCASE: Using a non pointer member, with a pointer of a non compatible type
+int Member_AliasTest_2(NumberStore *n, float *f)
+{
+	n->i = 11;
+	*f = 99;
+	return n->i;
+}
+
+// TESTCASE: Using a non pointer member, with a reference of the same type
+int Member_AliasTest_3(NumberStore *n, int &i)
+{
+	n->i = 11;
+	i = 99;
+	return n->i;
+}
+
+// TESTCASE: Using a non pointer member, with a reference of a non compatible type
+int Member_AliasTest_4(NumberStore *n, float &f)
+{
+	n->i = 11;
+	f = 99;
+	return n->i;
+}
+
+// TESTCASE: Using a reference member, with a pointer of the same type
+int ReferenceMember_AliasTest_1(NumberStore *n, int *i)
+{
+	n->ir = 11;
+	*i = 99;
+	return n->ir;
+}
+
+// TESTCASE: Using a reference member, with a pointer of a non compatible type
+int ReferenceMember_AliasTest_2(NumberStore *n, float *f)
+{
+	n->ir = 11;
+	*f = 99;
+	return n->ir;
+}
+
+// TESTCASE: Using a reference member, with a reference of the same type
+int ReferenceMember_AliasTest_3(NumberStore *n, int &i)
+{
+	n->ir = 11;
+	i = 99;
+	return n->ir;
+}
+
+// TESTCASE: Using a reference member, with a reference of a non compatible type
+int ReferenceMember_AliasTest_4(NumberStore *n, float &f)
+{
+	n->ir = 11;
+	f = 99;
+	return n->ir;
+}
+
+// TESTCASE: Using a pointer member, with a pointer of the same type
+int PointerMember_AliasTest_1(NumberStore *n, int *i)
+{
+	*n->ip = 11;
+	*i = 99;
+	return *n->ip;
+}
+
+// TESTCASE: Using a pointer member, with a pointer of a non compatible type
+int PointerMember_AliasTest_2(NumberStore *n, float *f)
+{
+	*n->ip = 11;
+	*f = 99;
+	return *n->ip;
+}
+
+// TESTCASE: Using a pointer member, with a reference of the same type
+int PointerMember_AliasTest_3(NumberStore *n, int &i)
+{
+	*n->ip = 11;
+	i = 99;
+	return *n->ip;
+}
+
+// TESTCASE: Using a pointer member, with a reference of a non compatible type
+int PointerMember_AliasTest_4(NumberStore *n, float &f)
+{
+	*n->ip = 11;
+	f = 99;
+	return *n->ip;
+}
+
+// TODO: Check if XRESTRICT fixes all assumed aliasing (if the compiler even assumes aliasing)
 
 int main()
 {
