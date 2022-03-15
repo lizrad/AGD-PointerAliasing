@@ -27,7 +27,7 @@ void Cross(FVec3 *A, FVec3 *B, FVec3 *Result)
 }
 
 /*
- * Question 1:
+ * QUESTION 1:
  * How does aliasing behave when references are used? Which role can or does
  * the restrict keyword play when references are used?
  */
@@ -41,7 +41,7 @@ void Cross(FVec3 &A, FVec3 &B, FVec3 &Result)
 
 // It behaves the same as there is no guarantee that the references are not referencing the same variables.
 // As seen in line 4 and 5 and line 16 and 17 below, 'y' gets accessed again due to a possible value change of y as there is no guarantee that it stayed the same.
-
+// (Output was produced using GCC but clang showed same multiple loads)
 /*
 1	Cross(FVec3&, FVec3&, FVec3&) :
 2		movss   xmm3, DWORD PTR[rsi + 8]
@@ -73,7 +73,7 @@ void CrossRestricted(FVec3 &XRESTRICT A, FVec3 &XRESTRICT B, FVec3 &XRESTRICT Re
 }
 
 // As you can see below, each component is only loaded once.
-
+// (Output was produced using GCC but clang showed the same improvement)
 /*
 1	CrossRestricted(FVec3&, FVec3&, FVec3&):
 2		movss   xmm2, DWORD PTR [rdi+4]
@@ -102,12 +102,12 @@ void CrossRestricted(FVec3 &XRESTRICT A, FVec3 &XRESTRICT B, FVec3 &XRESTRICT Re
 // Therefore, references behave exactly like pointers in the context of aliasing.
 
 /*
- * Question 2:
+ * QUESTION 2:
  * How could code be changed to allow more optimization possibilities for the
  * compiler without the usage of the restrict keyword?
  */
 
-// TODO: Should fix it? Possibly slower due to local variables?
+// VERSION 1: Using local variables to fix input references.
 void CrossNonRestricted_V1(FVec3 &A, FVec3 &B, FVec3 &Result)
 {
 	FVec3 a = A;
@@ -116,8 +116,35 @@ void CrossNonRestricted_V1(FVec3 &A, FVec3 &B, FVec3 &Result)
 	Result.y = a.z * b.x + a.x * b.z;
 	Result.z = a.x * b.y + a.y * b.x;
 }
+// This version produces very similar code to the restricted one, it just moves all loads to the top (which might be a bit unoptimized)
+// and still avoids multiple loads.
+// (Output was produced using GCC but clang showed basically the same result)
+/*
+CrossNonRestricted_V1(FVec3&, FVec3&, FVec3&):
+		movss   xmm0, DWORD PTR [rdi]
+		movss   xmm2, DWORD PTR [rdi+4]
+		movss   xmm1, DWORD PTR [rdi+8]
+		movss   xmm5, DWORD PTR [rsi]
+		movss   xmm6, DWORD PTR [rsi+4]
+		movss   xmm3, DWORD PTR [rsi+8]
+		movaps  xmm4, xmm2
+		mulss   xmm4, xmm3
+		movaps  xmm7, xmm1
+		mulss   xmm7, xmm6
+		addss   xmm4, xmm7
+		movss   DWORD PTR [rdx], xmm4
+		mulss   xmm1, xmm5
+		mulss   xmm3, xmm0
+		addss   xmm1, xmm3
+		movss   DWORD PTR [rdx+4], xmm1
+		mulss   xmm0, xmm6
+		mulss   xmm2, xmm5
+		addss   xmm0, xmm2
+		movss   DWORD PTR [rdx+8], xmm0
+		ret
+*/
 
-// TODO: Should fix it? Possibly a bit faster than above as only one local variable?
+// VERSION 2: Using local variable to fix output reference.
 void CrossNonRestricted_V2(FVec3 &A, FVec3 &B, FVec3 &Result)
 {
 	FVec3 temp_result;
@@ -126,16 +153,70 @@ void CrossNonRestricted_V2(FVec3 &A, FVec3 &B, FVec3 &Result)
 	temp_result.z = A.x * B.y + A.y * B.x;
 	Result = temp_result;
 }
+// Thought this might be a bit faster because it only creates one local variable instead of two like in VERSION 1
+// but apparantly it produces exactly the same code
+// (Output was produced using GCC but clang showed basically the same result)
+/*
+CrossNonRestricted_V2(FVec3&, FVec3&, FVec3&):
+		movss   xmm2, DWORD PTR [rdi+4]
+		movss   xmm3, DWORD PTR [rsi+8]
+		movss   xmm1, DWORD PTR [rdi+8]
+		movss   xmm0, DWORD PTR [rsi+4]
+		movss   xmm5, DWORD PTR [rsi]
+		movss   xmm6, DWORD PTR [rdi]
+		movaps  xmm4, xmm2
+		mulss   xmm4, xmm3
+		movaps  xmm7, xmm1
+		mulss   xmm7, xmm0
+		addss   xmm4, xmm7
+		movss   DWORD PTR [rdx], xmm4
+		mulss   xmm1, xmm5
+		mulss   xmm3, xmm6
+		addss   xmm1, xmm3
+		movss   DWORD PTR [rdx+4], xmm1
+		mulss   xmm0, xmm6
+		mulss   xmm2, xmm5
+		addss   xmm0, xmm2
+		movss   DWORD PTR [rdx+8], xmm0
+		ret
+*/
 
-// TODO: Difference to above? Can the compiler optimize above or this better?
+// VERSION 3: Use non reference parameter
 void CrossNonRestricted_V3(FVec3 A, FVec3 B, FVec3 &Result)
 {
 	Result.x = A.y * B.z + A.z * B.y;
 	Result.y = A.z * B.x + A.x * B.z;
 	Result.z = A.x * B.y + A.y * B.x;
 }
+// Does not really make a difference in the output still avoiding the multiple loadsd, but is more clearer for the user,
+// so in our opinion this should be prefered over VERSION 1 or VERSION 2
+// (Output was produced using GCC but clang showed basically the same result)
+/*
+CrossNonRestricted_V3(FVec3, FVec3, FVec3&):
+		movq    QWORD PTR [rsp-16], xmm0
+		movq    QWORD PTR [rsp-32], xmm2
+		movss   xmm0, DWORD PTR [rsp-16]
+		movss   xmm2, DWORD PTR [rsp-12]
+		movss   xmm5, DWORD PTR [rsp-32]
+		movss   xmm6, DWORD PTR [rsp-28]
+		movaps  xmm4, xmm2
+		mulss   xmm4, xmm3
+		movaps  xmm7, xmm1
+		mulss   xmm7, xmm6
+		addss   xmm4, xmm7
+		movss   DWORD PTR [rdi], xmm4
+		mulss   xmm1, xmm5
+		mulss   xmm3, xmm0
+		addss   xmm1, xmm3
+		movss   DWORD PTR [rdi+4], xmm1
+		mulss   xmm0, xmm6
+		mulss   xmm2, xmm5
+		addss   xmm0, xmm2
+		movss   DWORD PTR [rdi+8], xmm0
+		ret
+*/
 
-// TODO: only reads on possible aliasing variables should also fix double reads as they wont ever get dirty anyway? (I think this is what he wanted to see.)
+// VERSION 4: Using return value for out output, thus only needing reads for potentially aliasing parameters
 FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 {
 	FVec3 Result;
@@ -144,8 +225,38 @@ FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 	Result.z = A.x * B.y + A.y * B.x;
 	return Result;
 }
+// TODO: Again avoids multiple loads and is basically equal to VERSION 2 except writing to a different register.
+// This is the most clear version for the user though (even better when using const for the parameters) so it should be
+// the prefered one.
+// (Output was produced using GCC but clang showed basically the same result)
+/*
+CrossNonRestricted_V4(FVec3&, FVec3&):
+		movss   xmm1, DWORD PTR [rdi+4]
+		movss   xmm3, DWORD PTR [rsi+8]
+		movss   xmm0, DWORD PTR [rdi+8]
+		movss   xmm2, DWORD PTR [rsi+4]
+		movss   xmm5, DWORD PTR [rsi]
+		movss   xmm6, DWORD PTR [rdi]
+		movaps  xmm4, xmm1
+		mulss   xmm4, xmm3
+		movaps  xmm7, xmm0
+		mulss   xmm7, xmm2
+		addss   xmm4, xmm7
+		movss   DWORD PTR [rsp-20], xmm4
+		mulss   xmm0, xmm5
+		mulss   xmm3, xmm6
+		addss   xmm0, xmm3
+		movss   DWORD PTR [rsp-16], xmm0
+		mulss   xmm2, xmm6
+		mulss   xmm1, xmm5
+		movq    xmm0, QWORD PTR [rsp-20]
+		addss   xmm1, xmm2
+		ret
+*/
 
-// TODO: show assembly for each
+// Therefore to sum up our answer to Question 2:
+// Only use references where it makes sense to avoid unnecessary extraneous loads. If references are necessary for some reason, copying to local variables
+// helps avoiding multiple loads and it does not really make any difference how exactly this happens as the compiler will produce similar results anyway.
 
 /*
  * Question 3:
