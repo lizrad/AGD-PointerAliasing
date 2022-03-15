@@ -108,7 +108,7 @@ void CrossRestricted(FVec3 &XRESTRICT A, FVec3 &XRESTRICT B, FVec3 &XRESTRICT Re
  */
 
 // TODO: Should fix it? Possibly slower due to local variables?
-void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
+void CrossNonRestricted_V1(FVec3 &A, FVec3 &B, FVec3 &Result)
 {
 	FVec3 a = A;
 	FVec3 b = B;
@@ -118,7 +118,7 @@ void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
 }
 
 // TODO: Should fix it? Possibly a bit faster than above as only one local variable?
-void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
+void CrossNonRestricted_V2(FVec3 &A, FVec3 &B, FVec3 &Result)
 {
 	FVec3 temp_result;
 	temp_result.x = A.y * B.z + A.z * B.y;
@@ -128,15 +128,15 @@ void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
 }
 
 // TODO: Difference to above? Can the compiler optimize above or this better?
-void CrossNonRestricted(FVec3 A, FVec3 B, FVec3 &Result)
+void CrossNonRestricted_V3(FVec3 A, FVec3 B, FVec3 &Result)
 {
 	Result.x = A.y * B.z + A.z * B.y;
 	Result.y = A.z * B.x + A.x * B.z;
 	Result.z = A.x * B.y + A.y * B.x;
 }
 
-// TODO: only reads on possible aliasing variable should also fix double reads as they wont ever get dirty anyway?
-FVec3 CrossNonRestricted(FVec3 &A, FVec3 &B)
+// TODO: only reads on possible aliasing variable should also fix double reads as they wont ever get dirty anyway? (I think this is what he wanted to see.)
+FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 {
 	FVec3 Result;
 	Result.x = A.y * B.z + A.z * B.y;
