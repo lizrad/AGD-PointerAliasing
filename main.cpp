@@ -186,7 +186,16 @@ public:
 
 	// TODO: restrict can be applied to memeber functions (at least for gcc) see here:
 	// https://gcc.gnu.org/onlinedocs/gcc/Restricted-Pointers.html#Restricted-Pointers
-	// Write this cleanly and show an example
+	// Write this cleanly and explain test case below
+	int SameObjectRestrictedTest(NumberStore *n) XRESTRICT
+	{
+		*ip = 11;
+		*n->ip = 99;
+		return *ip;
+	}
+
+	// TODO: I don't know how restrict would work for the InternalAliasTest though?
+
 	int i;
 	int *ip;
 	int &ir;
