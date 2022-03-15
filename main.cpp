@@ -117,12 +117,32 @@ void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
 	Result.z = a.x * b.y + a.y * b.x;
 }
 
+// TODO: Should fix it? Possibly a bit faster than above as only one local variable?
+void CrossNonRestricted(FVec3 &A, FVec3 &B, FVec3 &Result)
+{
+	FVec3 temp_result;
+	temp_result.x = A.y * B.z + A.z * B.y;
+	temp_result.y = A.z * B.x + A.x * B.z;
+	temp_result.z = A.x * B.y + A.y * B.x;
+	Result = temp_result;
+}
+
 // TODO: Difference to above? Can the compiler optimize above or this better?
 void CrossNonRestricted(FVec3 A, FVec3 B, FVec3 &Result)
 {
 	Result.x = A.y * B.z + A.z * B.y;
 	Result.y = A.z * B.x + A.x * B.z;
 	Result.z = A.x * B.y + A.y * B.x;
+}
+
+// TODO: only reads on possible aliasing variable should also fix double reads as they wont ever get dirty anyway?
+FVec3 CrossNonRestricted(FVec3 &A, FVec3 &B)
+{
+	FVec3 Result;
+	Result.x = A.y * B.z + A.z * B.y;
+	Result.y = A.z * B.x + A.x * B.z;
+	Result.z = A.x * B.y + A.y * B.x;
+	return Result;
 }
 
 /*
