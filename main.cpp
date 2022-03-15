@@ -145,6 +145,8 @@ FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 	return Result;
 }
 
+// TODO: show assembly for each
+
 /*
  * Question 3:
  * How does aliasing behave in the context of classes and member variables:
@@ -157,7 +159,7 @@ class NumberStore
 public:
 	NumberStore(int i, int *ip, int &ir, float f, float *fp, float &fr, int *ip2) : i(i), ip(ip), ir(ir), f(f), fp(fp), fr(fr), ip2(ip2) {}
 
-	// TODO: similar testcases could be relvevant for non pointer members, but the extensive test cases with the global functions should cover it
+	// TODO?: similar testcases could be relvevant for regular members and reference members, but the extensive test cases with the global functions should cover it
 	//  TODO: Does compiler assume aliasing for i and ip member?
 	int BasicPointerAliasTest(int *i)
 	{
@@ -179,6 +181,12 @@ public:
 		*ip2 = 99;
 		return *ip;
 	}
+
+	// TODO: show assembly for each
+
+	// TODO: restrict can be applied to memeber functions (at least for gcc) see here:
+	// https://gcc.gnu.org/onlinedocs/gcc/Restricted-Pointers.html#Restricted-Pointers
+	// Write this cleanly and show an example
 	int i;
 	int *ip;
 	int &ir;
@@ -288,6 +296,7 @@ int PointerMember_AliasTest_4(NumberStore *n, float &f)
 	return *n->ip;
 }
 
+// TODO: show assembly for each
 // TODO: Check if XRESTRICT fixes all assumed aliasing (if the compiler even assumes aliasing)
 
 int main()
