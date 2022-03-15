@@ -296,6 +296,6 @@ int main()
 	FVec3 b = {3.0f, 3.0f, 3.0f};
 	FVec3 c;
 	CrossRestricted(a, b, c);
-	printf("%f", c.x);
+	printf("%f\n", c.x);
 	return 0;
 }
