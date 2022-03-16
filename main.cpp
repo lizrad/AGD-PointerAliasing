@@ -12,6 +12,10 @@
 #define XRESTRICT restrict
 #endif
 
+/*
+ * General note: all assembly code was generated with godbolt using GCC 11.2 and clang 13.0.1 with O1 optimizations.
+ */
+
 struct FVec3
 {
 	float x;
@@ -188,7 +192,7 @@ void CrossNonRestricted_V3(FVec3 A, FVec3 B, FVec3 &Result)
 	Result.y = A.z * B.x + A.x * B.z;
 	Result.z = A.x * B.y + A.y * B.x;
 }
-// Does not really make a difference in the output still avoiding the multiple loadsd, but is more clearer for the user,
+// Does not really make a difference in the output still avoiding the multiple loads, but is clearer for the user,
 // so in our opinion this should be prefered over VERSION 1 or VERSION 2
 // (Output was produced using GCC but clang showed basically the same result)
 /*
@@ -225,7 +229,7 @@ FVec3 CrossNonRestricted_V4(FVec3 &A, FVec3 &B)
 	Result.z = A.x * B.y + A.y * B.x;
 	return Result;
 }
-// TODO: Again avoids multiple loads and is basically equal to VERSION 2 except writing to a different register.
+// Again avoids multiple loads and is basically equal to VERSION 2 except writing to a different register.
 // This is the most clear version for the user though (even better when using const for the parameters) so it should be
 // the prefered one.
 // (Output was produced using GCC but clang showed basically the same result)
@@ -270,40 +274,10 @@ class NumberStore
 public:
 	NumberStore(int i, int *ip, int &ir, float f, float *fp, float &fr, int *ip2) : i(i), ip(ip), ir(ir), f(f), fp(fp), fr(fr), ip2(ip2) {}
 
-	// TODO?: similar testcases could be relvevant for regular members and reference members, but the extensive test cases with the global functions should cover it
-	//  TODO: Does compiler assume aliasing for i and ip member?
-	int BasicPointerAliasTest(int *i)
-	{
-		*ip = 11;
-		*i = 99;
-		return *ip;
-	}
-	// TODO: Does compiler assume aliasing for n->ip and ip member?
-	int SameObjectAliasTest(NumberStore *n)
-	{
-		*ip = 11;
-		*n->ip = 99;
-		return *ip;
-	}
-	// TODO: Does compiler assume aliasing for ip and ip2 members?
-	int InternalAliasTest()
-	{
-		*ip = 11;
-		*ip2 = 99;
-		return *ip;
-	}
-
-	// TODO: show assembly for each
-
-	// TODO: restrict can be applied to memeber functions (at least for gcc) see here:
-	// https://gcc.gnu.org/onlinedocs/gcc/Restricted-Pointers.html#Restricted-Pointers
-	// Write this cleanly and explain test case below
-	int SameObjectRestrictedTest(NumberStore *n) XRESTRICT
-	{
-		*ip = 11;
-		*n->ip = 99;
-		return *ip;
-	}
+	int BasicPointerAliasTest(int *i);
+	int BasicPointerAliasRestrictedTest(int * XRESTRICT i) XRESTRICT;
+	int SameObjectAliasTest(NumberStore *n);
+	int InternalAliasTest();
 
 	// TODO: I don't know how restrict would work for the InternalAliasTest though?
 
@@ -316,6 +290,85 @@ public:
 
 	int *ip2;
 };
+
+int NumberStore::BasicPointerAliasTest(int *i)
+{
+	*ip = 11;
+	*i = 99;
+	return *ip;
+}
+int NumberStore::BasicPointerAliasRestrictedTest(int * XRESTRICT i) XRESTRICT
+{
+	*ip = 11;
+	*i = 99;
+	return *ip;
+}
+// The compiler accesses `ip` again, so it assumes that `i` and `ip` could alias each other.
+/*
+NumberStore::BasicPointerAliasTest(int*):
+        mov     rax, QWORD PTR [rdi+8]
+        mov     DWORD PTR [rax], 11
+        mov     DWORD PTR [rsi], 99
+        mov     rax, QWORD PTR [rdi+8]
+        mov     eax, DWORD PTR [rax]
+        ret
+*/
+// With added XRESTRICTs, as expected, this is not the case anymore and 11 is returned right away:
+/*
+NumberStore::BasicPointerAliasRestrictedTest(int*):
+        mov     rax, QWORD PTR [rdi+8]
+        mov     DWORD PTR [rax], 11
+        mov     DWORD PTR [rsi], 99
+        mov     eax, 11
+        ret
+*/
+// Note that the XRESTRICT needs to be added both to the parameter and to the NumberStore object (more accurately: the `this` pointer).
+// More detail on this here: https://gcc.gnu.org/onlinedocs/gcc/Restricted-Pointers.html#Restricted-Pointers
+// Same behavior in CLANG.
+
+
+int NumberStore::SameObjectAliasTest(NumberStore *n)
+{
+	*ip = 11;
+	*n->ip = 99;
+	return *ip;
+}
+// The compiler assumes that the `ip` variables from both objects can alias each other.
+/*
+NumberStore::SameObjectAliasTest(NumberStore*):
+        mov     rax, QWORD PTR [rdi+8]
+        mov     DWORD PTR [rax], 11
+        mov     rax, QWORD PTR [rsi+8]
+        mov     DWORD PTR [rax], 99
+        mov     rax, QWORD PTR [rdi+8]
+        mov     eax, DWORD PTR [rax]
+        ret
+*/
+// We found no way of using XRESTRICT to alter this behavior: it can only apply to the `NumberStore` objects, but not to their member variables.
+
+
+int NumberStore::InternalAliasTest()
+{
+	*ip = 11;
+	*ip2 = 99;
+	return *ip;
+}
+// The compiler assumes that `ip` and `ip2` can alias each other.
+/*
+NumberStore::InternalAliasTest():
+        mov     rax, QWORD PTR [rdi+8]
+        mov     DWORD PTR [rax], 11
+        mov     rax, QWORD PTR [rdi+48]
+        mov     DWORD PTR [rax], 99
+        mov     rax, QWORD PTR [rdi+8]
+        mov     eax, DWORD PTR [rax]
+        ret
+*/
+// Again, no way of using XRESTRICT to change this since there's no way of applying it to member variables.
+
+
+
+
 
 // TODO: for each testcase, check if aliasing could happen. If so, the compiler must assume that 99 could be a possible return value,
 // if not it can immediately use 11 as a return value.
@@ -426,5 +479,16 @@ int main()
 	FVec3 c;
 	CrossRestricted(a, b, c);
 	printf("%f\n", c.x);
-	return 0;
+	
+    int *ip1 = new int(1);
+    int ir = 1;
+    float *fp1 = new float(2.0f);
+    float fr = 2.0f;
+    int *ip2 = new int(2);
+
+    NumberStore ns(1, ip1, ir, 2.0, fp1, fr, ip2);
+
+    int result = ns.BasicPointerAliasTest(ip1);
+
+    printf("%i\n", result);
 }
