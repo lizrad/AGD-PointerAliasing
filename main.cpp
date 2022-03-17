@@ -312,7 +312,7 @@ NumberStore::BasicPointerAliasTest(int*):
         ret
 */
 // With added XRESTRICTs, as expected, this is not the case anymore and 11 is returned right away:
-/*
+/* (gcc)
 NumberStore::BasicPointerAliasRestrictedTest(int*):
         mov     rax, QWORD PTR [rdi+8]
         mov     DWORD PTR [rax], 11
@@ -322,7 +322,8 @@ NumberStore::BasicPointerAliasRestrictedTest(int*):
 */
 // Note that the XRESTRICT needs to be added both to the parameter and to the NumberStore object (more accurately: the `this` pointer).
 // More detail on this here: https://gcc.gnu.org/onlinedocs/gcc/Restricted-Pointers.html#Restricted-Pointers
-// Same behavior in CLANG.
+// CLANG only needs XRESTRICT added to the parameter, not the this-pointer
+// Note: GCC and O2 optimisation with XRESTRICT added to either the parameter or the this-pointer prevents aliasing here.
 
 
 int NumberStore::SameObjectAliasTest(NumberStore *n)
@@ -332,7 +333,7 @@ int NumberStore::SameObjectAliasTest(NumberStore *n)
 	return *ip;
 }
 // The compiler assumes that the `ip` variables from both objects can alias each other.
-/*
+/* (gcc)
 NumberStore::SameObjectAliasTest(NumberStore*):
         mov     rax, QWORD PTR [rdi+8]
         mov     DWORD PTR [rax], 11
@@ -343,6 +344,7 @@ NumberStore::SameObjectAliasTest(NumberStore*):
         ret
 */
 // We found no way of using XRESTRICT to alter this behavior: it can only apply to the `NumberStore` objects, but not to their member variables.
+// Note: GCC with O2 optimisation and XRESTRICT added to either the parameter or the this-pointer prevents aliasing.
 
 
 int NumberStore::InternalAliasTest()
@@ -352,7 +354,7 @@ int NumberStore::InternalAliasTest()
 	return *ip;
 }
 // The compiler assumes that `ip` and `ip2` can alias each other.
-/*
+/* (gcc)
 NumberStore::InternalAliasTest():
         mov     rax, QWORD PTR [rdi+8]
         mov     DWORD PTR [rax], 11
@@ -363,12 +365,13 @@ NumberStore::InternalAliasTest():
         ret
 */
 // Again, no way of using XRESTRICT to change this since there's no way of applying it to member variables.
-
+// Note: GCC with O2 optimisation and XRESTRICT added to the this-pointer assumes no aliasing.
 
 
 
 // Member variable tests:
 // (Detailed explanations here; see MemberVariableTestCases.png for the results)
+
 
 // TESTCASE: Using a non pointer member, with a pointer of the same type
 int Member_AliasTest_1(NumberStore *n, int *i)
@@ -385,8 +388,10 @@ Member_AliasTest_1(NumberStore*, int*):
         ret
 */
 // Aliasing is possible.
-// Adding XRESTRICT to the parameter `i` allows the compiler to optimize and return 11 directly:
+// Adding XRESTRICT to any parameter allows the compiler to optimize and return 11 directly:
 // mov     eax, 11 (instead of: mov     eax, DWORD PTR [rdi])
+// Note: GCC O2 behaves like GCC O1 and CLANG
+
 
 // TESTCASE: Using a non pointer member, with a pointer of a non compatible type
 int Member_AliasTest_2(NumberStore *n, float *f)
@@ -410,7 +415,9 @@ Member_AliasTest_2(NumberStore*, float*): # @Member_AliasTest_2(NumberStore*, fl
         mov     eax, 11
         ret
 */
-// Adding XRESTRICT causes GCC to produce the same output as CLANG.
+// Adding XRESTRICT to any parameter causes GCC to produce the same output as CLANG.
+// Note: GCC with O2 optimisation without XRESTRICT assumes no aliasing here like CLANG.
+
 
 // TESTCASE: Using a non pointer member, with a reference of the same type
 int Member_AliasTest_3(NumberStore *n, int &i)
@@ -427,7 +434,9 @@ Member_AliasTest_3(NumberStore*, int&):
         ret
 */
 // Aliasing is possible.
-// Adding XRESTRICT causes 11 to be returned directly.
+// Adding XRESTRICT to any parameter causes 11 to be returned directly.
+// Note: GCC with O2 optimisation with XRESTRICT added to any parameter prevents aliasing, like CLANG.
+
 
 // TESTCASE: Using a non pointer member, with a reference of a non compatible type
 int Member_AliasTest_4(NumberStore *n, float &f)
@@ -451,7 +460,16 @@ Member_AliasTest_4(NumberStore*, float&): # @Member_AliasTest_4(NumberStore*, fl
         mov     eax, 11
         ret
 */
-// Adding XRESTRICT again causes GCC to produce the same output as CLANG.
+// Adding XRESTRICT again to any parameter causes GCC to produce the same output as CLANG:
+/* (gcc)
+Member_AliasTest_4(NumberStore*, float&):
+		mov     DWORD PTR [rdi], 11
+		mov     DWORD PTR [rsi], 0x42c60000
+		mov     eax, 11
+		ret
+*/
+// Note: GCC with O2 optimisation without XRESTRICT assumes no aliasing here as well, like CLANG.
+
 
 // TESTCASE: Using a reference member, with a pointer of the same type
 int ReferenceMember_AliasTest_1(NumberStore *n, int *i)
@@ -470,7 +488,7 @@ ReferenceMember_AliasTest_1(NumberStore*, int*):
         ret
 */
 // Aliasing is possible.
-// Adding XRESTRICT causes no change in GCC, but it does cause a direct return of 11 in CLANG:
+// Adding XRESTRICT to the second parameter causes a direct return of 11 in CLANG:
 /* (clang)
 ReferenceMember_AliasTest_1(NumberStore*, int*): # @ReferenceMember_AliasTest_1(NumberStore*, int*)
         mov     rax, qword ptr [rdi + 16]
@@ -479,6 +497,17 @@ ReferenceMember_AliasTest_1(NumberStore*, int*): # @ReferenceMember_AliasTest_1(
         mov     eax, 11
         ret
 */
+// Adding XRESTRICT to both parameters causes also GCC to return 11:
+/* (gcc)
+ReferenceMember_AliasTest_1(NumberStore*, int*):
+		mov     rax, QWORD PTR [rdi+16]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 99
+		mov     eax, 11
+		ret
+*/
+// Note: GCC with O2 optimisation with XRESTRICT at the second parameter returns 11, again same as CLANG.
+
 
 // TESTCASE: Using a reference member, with a pointer of a non compatible type
 int ReferenceMember_AliasTest_2(NumberStore *n, float *f)
@@ -496,7 +525,15 @@ ReferenceMember_AliasTest_2(NumberStore*, float*):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// Aliasing is possible in GCC; adding XRESTRICT causes no change.
+// Aliasing is possible in GCC; adding XRESTRICT to both parameters prevents it:
+/*(gcc)
+ReferenceMember_AliasTest_2(NumberStore*, float*):
+		mov     rax, QWORD PTR [rdi+16]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 0x42c60000
+		mov     eax, 11
+		ret
+*/
 // In CLANG, 11 is returned right away regardless of XRESTRICT or not:
 /* (clang)
 ReferenceMember_AliasTest_2(NumberStore*, float*): # @ReferenceMember_AliasTest_2(NumberStore*, float*)
@@ -506,6 +543,8 @@ ReferenceMember_AliasTest_2(NumberStore*, float*): # @ReferenceMember_AliasTest_
         mov     eax, 11
         ret
 */
+// Note: GCC O2 behaves the same as CLANG as well.
+
 
 // TESTCASE: Using a reference member, with a reference of the same type
 int ReferenceMember_AliasTest_3(NumberStore *n, int &i)
@@ -523,8 +562,16 @@ ReferenceMember_AliasTest_3(NumberStore*, int&):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// Aliasing is possible in GCC; adding XRESTRICT causes no change.
-// Aliasing is also possible in CLANG, but adding XRESTRICT does return 11 directly there:
+// Aliasing is possible in GCC; adding XRESTRICT to both parameters prevents it again:
+/* (gcc)
+ReferenceMember_AliasTest_3(NumberStore*, int&):
+		mov     rax, QWORD PTR [rdi+16]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 99
+		mov     eax, 11
+		ret
+*/
+// Aliasing is also possible in CLANG, but adding XRESTRICT to the second parameter does return 11 directly there:
 /* (clang)
 ReferenceMember_AliasTest_3(NumberStore*, int&): # @ReferenceMember_AliasTest_3(NumberStore*, int&)
         mov     rax, qword ptr [rdi + 16]
@@ -533,6 +580,8 @@ ReferenceMember_AliasTest_3(NumberStore*, int&): # @ReferenceMember_AliasTest_3(
         mov     eax, 11
         ret
 */
+// Note: GCC O2 behaves the same as CLANG.
+
 
 // TESTCASE: Using a reference member, with a reference of a non compatible type
 int ReferenceMember_AliasTest_4(NumberStore *n, float &f)
@@ -550,7 +599,15 @@ ReferenceMember_AliasTest_4(NumberStore*, float&):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// GCC allows aliasing and does not react to XRESTRICT.
+// GCC allows aliasing, adding XRESTRICT to both parameters prevents this:
+/* (gcc)
+ReferenceMember_AliasTest_4(NumberStore*, float&):
+		mov     rax, QWORD PTR [rdi+16]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 0x42c60000
+		mov     eax, 11
+		ret
+*/
 // CLANG never allows aliasing regardless of XRESTRICT:
 /* (clang)
 ReferenceMember_AliasTest_4(NumberStore*, float&): # @ReferenceMember_AliasTest_4(NumberStore*, float&)
@@ -560,6 +617,8 @@ ReferenceMember_AliasTest_4(NumberStore*, float&): # @ReferenceMember_AliasTest_
         mov     eax, 11
         ret
 */
+// Note: GCC O2 behaves the same as CLANG.
+
 
 // TESTCASE: Using a pointer member, with a pointer of the same type
 int PointerMember_AliasTest_1(NumberStore *n, int *i)
@@ -576,8 +635,16 @@ PointerMember_AliasTest_1(NumberStore*, int*): # @PointerMember_AliasTest_1(Numb
         mov     eax, dword ptr [rax]
         ret
 */
-// Aliasing is possible in GCC; adding XRESTRICT causes no change.
-// Aliasing is also possible in CLANG, but it does react to XRESTRICT, where it returns 11 directly:
+// Aliasing is possible in GCC; adding XRESTRICT to both parameters prevents this:
+/* (gcc)
+PointerMember_AliasTest_1(NumberStore*, int*):
+		mov     rax, QWORD PTR [rdi+8]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 99
+		mov     eax, 11
+		ret
+*/
+// Aliasing is also possible in CLANG, but it does react to XRESTRICT (added to the second parameter), where it returns 11 directly:
 /* (clang)
 PointerMember_AliasTest_1(NumberStore*, int*): # @PointerMember_AliasTest_1(NumberStore*, int*)
         mov     rax, qword ptr [rdi + 8]
@@ -586,6 +653,8 @@ PointerMember_AliasTest_1(NumberStore*, int*): # @PointerMember_AliasTest_1(Numb
         mov     eax, 11
         ret
 */
+// Note: GCC O2 with XRESTRICT added to ANY parameter does not allow aliasing, different to CLANG
+
 
 // TESTCASE: Using a pointer member, with a pointer of a non compatible type
 int PointerMember_AliasTest_2(NumberStore *n, float *f)
@@ -603,7 +672,16 @@ PointerMember_AliasTest_2(NumberStore*, float*):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// GCC always allows aliasing, CLANG never does, XRESTRICT doesn't make a difference either way:
+// GCC allows aliasing, adding XRESTRICT to both parameters prevents this:
+/* (gcc)
+PointerMember_AliasTest_2(NumberStore*, float*):
+		mov     rax, QWORD PTR [rdi+8]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 0x42c60000
+		mov     eax, 11
+		ret
+*/
+// CLANG never does, XRESTRICT doesn't make a difference either way:
 /* (clang)
 PointerMember_AliasTest_2(NumberStore*, float*): # @PointerMember_AliasTest_2(NumberStore*, float*)
         mov     rax, qword ptr [rdi + 8]
@@ -612,6 +690,8 @@ PointerMember_AliasTest_2(NumberStore*, float*): # @PointerMember_AliasTest_2(Nu
         mov     eax, 11
         ret
 */
+// Note: GCC O2 behaves like CLANG here.
+
 
 // TESTCASE: Using a pointer member, with a reference of the same type
 int PointerMember_AliasTest_3(NumberStore *n, int &i)
@@ -629,8 +709,16 @@ PointerMember_AliasTest_3(NumberStore*, int&):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// Again, aliasing is possible in GCC and adding XRESTRICT causes no change.
-// This time though, CLANG also allows aliasing, but it does react to XRESTRICT:
+// Aliasing is possible in GCC, adding XRESTRICT to both parameters prevents this:
+/* (gcc)
+PointerMember_AliasTest_3(NumberStore*, int&):
+		mov     rax, QWORD PTR [rdi+8]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 99
+		mov     eax, 11
+		ret
+*/
+// CLANG also allows aliasing, but adding XRESTRICT to the second parameter prevents it:
 /* (clang)
 PointerMember_AliasTest_3(NumberStore*, int&): # @PointerMember_AliasTest_3(NumberStore*, int&)
         mov     rax, qword ptr [rdi + 8]
@@ -639,6 +727,8 @@ PointerMember_AliasTest_3(NumberStore*, int&): # @PointerMember_AliasTest_3(Numb
         mov     eax, 11
         ret
 */
+// Note: Similar to PointerMember_AliasTest_1, GCC O2 with XRESTRICT added to any parameter prevents aliasing.
+
 
 // TESTCASE: Using a pointer member, with a reference of a non compatible type
 int PointerMember_AliasTest_4(NumberStore *n, float &f)
@@ -656,7 +746,16 @@ PointerMember_AliasTest_4(NumberStore*, float&):
         mov     eax, DWORD PTR [rax]
         ret
 */
-// GCC always allows aliasing, also with XRESTRICT. CLANG Never allows aliasing:
+// GCC allows aliasing, adding XRESTRICT to both parameters prevents it again: 
+/* (gcc)
+PointerMember_AliasTest_4(NumberStore*, float&):
+		mov     rax, QWORD PTR [rdi+8]
+		mov     DWORD PTR [rax], 11
+		mov     DWORD PTR [rsi], 0x42c60000
+		mov     eax, 11
+		ret
+*/
+// CLANG Never allows aliasing:
 /* (clang)
 PointerMember_AliasTest_4(NumberStore*, float&): # @PointerMember_AliasTest_4(NumberStore*, float&)
         mov     rax, qword ptr [rdi + 8]
@@ -665,6 +764,8 @@ PointerMember_AliasTest_4(NumberStore*, float&): # @PointerMember_AliasTest_4(Nu
         mov     eax, 11
         ret
 */
+// Note: GCC O2 behaves like CLANG again.
+
 
 // All of these results were noted in a clearer format in MemberVariableTestCases.png.
 
@@ -673,10 +774,12 @@ PointerMember_AliasTest_4(NumberStore*, float&): # @PointerMember_AliasTest_4(Nu
 //   - GCC always allows aliasing.
 //   - Clang only allows aliasing when it's the same type.
 // - With XRESTRICT
-//   - GCC doesn't allow aliasing with non-pointer members, but it does with reference and pointer members.
+//   - GCC never allows aliasing, but requires most of the time both parameters to be XRESTRICT.
 //   - Clang never allows aliasing.
 
-// It seems like CLANG generally optimizes more aggressively, whereas GCC is careful even with XRESTRICT added.
+// It seems like CLANG generally optimizes more aggressively, whereas GCC is careful, but can be more strict with XRESTRICT added.
+
+// Note: GCC O2 behaves almost exactly like CLANG, except for the Test-Cases PointerMember_AliasTest_1 and PointerMember_AliasTest_3 and the class methods SameObjectAliasTest() and InternalAliasTest()
 
 int main()
 {
