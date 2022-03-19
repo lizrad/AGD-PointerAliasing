@@ -14,6 +14,7 @@
 
 /*
  * General note: all assembly code was generated with godbolt using GCC 11.2 and clang 13.0.1 with O1 optimizations.
+ * We did some further investigations using GCC with the O2 flag, those findings have been added as "Notes".
  */
 
 struct FVec3
